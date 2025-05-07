@@ -1,6 +1,9 @@
 use std::{cmp::Ordering, collections::VecDeque, fmt::{self, Display, Formatter}, ops::{Add, Mul, Sub}};
 
-type BigNumType = u8;
+type BigNumType = u128;
+const BASE: BigNumType = 1_000_000_000_000_000_000;
+const BASE_DIGITS: usize = 18;
+
 #[derive(Debug, Clone)]
 pub struct BigNum{
     num: VecDeque<BigNumType>,
@@ -10,7 +13,12 @@ pub struct BigNum{
 impl Display for BigNum {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if self.neg { write!(f, "-")? }
-        for num in &self.num { write!(f, "{}", num)?; }
+        let mut iter = self.num.iter();
+
+        if let Some(first) = iter.next() {
+            write!(f, "{}", first)?;
+            for num in iter { write!(f, "{:0d$}", num, d = BASE_DIGITS)?; }
+        } else { write!(f, "0")?; }
         Ok(())
     }
 }
@@ -37,14 +45,24 @@ impl BigNum {
     pub fn new_with(s: String) -> Self {
         let s = s.trim();
         let mut neg=false;
-        let mut i = 0;
+        let (mut i, mut z) = (0,s.len());
+        let mut j;
+        let mut num = VecDeque::with_capacity(s.len() / BASE_DIGITS);
+
         if s.chars().nth(0) == Some('-') { neg = true; i += 1; }
         while s.chars().nth(i) == Some('0') { i+=1; }
 
         if i >= s.len() { BigNum::new_zero() }
         else {
+            while z > i {
+                j = if z > i + BASE_DIGITS { z - BASE_DIGITS } else { i };
+                num.push_front(s[j..z].parse::<BigNumType>().unwrap());
+
+                z = j;
+            }
+
             BigNum {
-                num: s[i..].chars().map(|x| x.to_digit(10).unwrap() as BigNumType).collect(),
+                num,
                 neg
             }
         }
@@ -79,7 +97,7 @@ impl Add for &BigNum {
 
         let (mut i, mut j, mut rem) = (self.len() as isize -1,rhs.len() as isize -1,0);
         let (mut tempo, mut a, mut b);
-        let mut num = VecDeque::new();
+        let mut num = VecDeque::with_capacity( if self.len() > rhs.len() { self.len() + 1 } else { rhs.len() + 1 } );
 
         while i >= 0 || j >= 0 || rem != 0 {
             a = if i >= 0 { self.num[i as usize] } else { 0 };
@@ -87,8 +105,8 @@ impl Add for &BigNum {
 
             tempo = a + b + rem;
 
-            num.push_front(tempo%10);
-            rem = tempo/10;
+            num.push_front(tempo%BASE);
+            rem = tempo/BASE;
 
             i -= 1;
             j -= 1;
@@ -129,8 +147,8 @@ impl Sub for &BigNum {
             Ordering::Greater => {}
         }
 
-        let mut num = VecDeque::new();
-        let (mut tempo, mut a, mut b): (isize,isize,isize);
+        let mut num = VecDeque::with_capacity(big.len());
+        let (mut tempo, mut a, mut b);
         let (mut i, mut j, mut rem) = (big.len() as isize -1, small.len() as isize -1, 0);
 
         while i >= 0 || j >= 0 {
@@ -139,7 +157,7 @@ impl Sub for &BigNum {
 
             tempo = a - b - rem;
 
-            num.push_front( if tempo < 0 { (tempo + 10) as BigNumType } else { tempo as BigNumType } );
+            num.push_front( if tempo < 0 { (tempo + BASE as isize) as BigNumType } else { tempo as BigNumType } );
             rem = if tempo < 0 { 1 } else { 0 };
 
             i -= 1;
@@ -147,9 +165,13 @@ impl Sub for &BigNum {
         }
 
         while num.front() == Some(&0) { num.pop_front(); }
-        BigNum {
-            num,
-            neg
+
+        if num.is_empty() { BigNum::new_zero() }
+        else {
+            BigNum {
+                num,
+                neg
+            }
         }
     }
 }
@@ -168,8 +190,8 @@ impl Mul for &BigNum {
         for i in rhs.num.iter().rev() {
             for j in (0..c.len()).rev() {
                 tempo = c.num[j] * i + rem;
-                c.num[j] = tempo%10;
-                rem = tempo/10;
+                c.num[j] = tempo%BASE;
+                rem = tempo/BASE;
             }
             if rem != 0 { c.num.push_front(rem); rem = 0; }
             for _ in 0..times { c.num.push_back(0); }
@@ -182,3 +204,15 @@ impl Mul for &BigNum {
         res
     }
 }
+
+/* impl Mul for &BigNum {
+    type Output = BigNum;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        if self.num[0] == 0 || rhs.num[0] == 0 { return BigNum::new_zero(); }
+
+        let mut num = VecDeque::new();
+    }
+
+} */
+ 
